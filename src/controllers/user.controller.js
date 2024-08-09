@@ -259,12 +259,12 @@ const updateUsername = asyncHandler(async function (req, res, next) {
   if (!user)
     throw new APIError(
       404,
-      "User not found. Register before updating username."
+      "User not found. Register before updating username"
     );
 
   const { newUsername } = req.body;
 
-  if (!newUsername) throw new APIError(404, "Please enter a new username.");
+  if (!newUsername) throw new APIError(404, "Please enter a new username");
 
   const doesExist = await User.findOne({
     username: newUsername?.trim()?.toLowerCase(),
@@ -287,6 +287,51 @@ const updateUsername = asyncHandler(async function (req, res, next) {
     );
 });
 
+const updateAvatar = asyncHandler(async function (req, res, next) {
+  const { avatar } = req.body;
+  if (!avatar)
+    throw new APIError(404, "Missing avatar image from the request body");
+  if (!req.user?._id) throw new APIError(401, "User not logged in");
+  if (!req.file?.path)
+    throw new APIError(404, "Something went wrong uploading the avatar");
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    { avatar: req.file?.path },
+    { new: true }
+  ).select(
+    "-password -_refreshToken -userType -status -expertise -bio -coverImage"
+  );
+
+  if (!user) throw new APIError(500, "User not found, could not update avatar");
+
+  res.status(200).json(new APIResponse(200, user, "Avatar update successful"));
+});
+
+const updateCoverImage = asyncHandler(async function (req, res, next) {
+  const { coverImage } = req.body;
+  if (!coverImage)
+    throw new APIError(404, "Missing cover image from the request body");
+  if (!req.user?._id) throw new APIError(401, "User not logged in");
+  if (!req.file?.path)
+    throw new APIError(404, "Something went wrong uploading the avatar");
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    { coverImage: req.file?.path },
+    { new: true }
+  ).select(
+    "-password -_refreshToken -userType -status -expertise -bio -avatar"
+  );
+
+  if (!user)
+    throw new APIError(500, "User not found, could not update cover image");
+
+  res
+    .status(200)
+    .json(new APIResponse(200, user, "Cover Image update successful"));
+});
+
 export {
   registerUser,
   loginUser,
@@ -294,4 +339,6 @@ export {
   regenerateExpiredAccessToken,
   updatePassword,
   updateUsername,
+  updateCoverImage,
+  updateAvatar,
 };
