@@ -1,9 +1,10 @@
-import { Mongoose, Schema } from "mongoose";
+// import { Mongoose, Schema } from "mongoose";
 import { User } from "../models/user.model.js";
 import { APIError } from "../utils/APIError.js";
 import { APIResponse } from "../utils/APIResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken";
+
 const generateAccessAndRefreshTokens = async function (userId) {
   try {
     const user = await User.findById(userId);
@@ -28,10 +29,18 @@ const generateAccessAndRefreshTokens = async function (userId) {
 };
 
 const registerUser = asyncHandler(async function (req, res, next) {
-  const { username, password, email, firstName, lastName, bio, expertise } = req.body;
+  const { username, password, email, firstName, lastName, bio, expertise } =
+    req.body;
 
-  if ([username, password, email, firstName].some((item) => item == "" || item == undefined)) {
-    throw new APIError(404, "Username, Password, Email, Avatar and First Name cannot be empty");
+  if (
+    [username, password, email, firstName].some(
+      (item) => item == "" || item == undefined
+    )
+  ) {
+    throw new APIError(
+      404,
+      "Username, Password, Email, Avatar and First Name cannot be empty"
+    );
   }
 
   const avatar = req?.files?.avatar?.[0]?.path;
@@ -58,7 +67,8 @@ const registerUser = asyncHandler(async function (req, res, next) {
     "-password -refreshToken -email -status -userType"
   );
 
-  if (!insertedUser) throw new APIError(404, "Could not get user, try logging in");
+  if (!insertedUser)
+    throw new APIError(404, "Could not get user, try logging in");
 
   res.status(200).json({ mssg: "Registration Succesful", user: insertedUser });
 });
@@ -66,7 +76,8 @@ const registerUser = asyncHandler(async function (req, res, next) {
 const loginUser = asyncHandler(async function (req, res, next) {
   const { username, email, password } = req.body;
 
-  if (!username && !email) throw new APIError(401, "Must enter username or email");
+  if (!username && !email)
+    throw new APIError(401, "Must enter username or email");
   if (!password) throw new APIError(401, "Cannot login without a password");
 
   const userSearched = await User.findOne({
@@ -77,14 +88,20 @@ const loginUser = asyncHandler(async function (req, res, next) {
 
   const check = await userSearched?.isCorrectPassword(password);
 
-  if (!check) throw new APIError(401, "Authentication Error. User password does not match.");
+  if (!check)
+    throw new APIError(
+      401,
+      "Authentication Error. User password does not match."
+    );
 
   //   const updatedTokenUser = await User.findOneAndUpdate(
   //     { _id: userSearched._id },
   //     { $set: { _refreshToken } },
   //     { validateBeforeSave: false }
   //   ).select("-password -_refreshToken -userType -status");
-  const { _refreshToken, _accessToken } = await generateAccessAndRefreshTokens(userSearched._id);
+  const { _refreshToken, _accessToken } = await generateAccessAndRefreshTokens(
+    userSearched._id
+  );
 
   const cookieOptions = {
     httpOnly: true,
@@ -133,4 +150,148 @@ const logoutUser = asyncHandler(async function (req, res, next) {
     .json(new APIResponse(200, null, "User logged out"));
 });
 
-export { registerUser, loginUser, logoutUser };
+const regenerateExpiredAccessToken = asyncHandler(
+  async function (req, res, next) {
+    try {
+      const refreshToken =
+        req.cookies?._refreshToken || req.body?._refreshToken;
+
+      if (!refreshToken)
+        throw new APIError(
+          401,
+          "Refresh token does not exist. May have expired."
+        );
+
+      const decodedToken = jwt.verify(
+        refreshToken,
+        process.env.SIGNED_JWT_REFRESH_KEY
+      );
+
+      const user = await User.findById(decodedToken._id);
+
+      if (!user)
+        throw new APIError(
+          401,
+          "User not found. Unauthorized access to tokens."
+        );
+
+      if (!(refreshToken === user?._refreshToken))
+        throw new APIError("Refresh tokens do not match. Critical error.");
+
+      const { _accessToken, _refreshToken } =
+        await generateAccessAndRefreshTokens(user._id);
+
+      const cookieOptions = {
+        httpOnly: true,
+        secure: true,
+      };
+
+      res
+        .status(200)
+        .cookie("_refreshToken", _refreshToken, cookieOptions)
+        .cookie("_accessToken", _accessToken, cookieOptions)
+        .json(
+          new APIResponse(
+            200,
+            { _accessToken, _refreshToken },
+            "Access token regenerated succesfully"
+          )
+        );
+    } catch (error) {
+      throw new APIError(500, `Something went wrong ${e}`);
+    }
+  }
+);
+
+const updatePassword = asyncHandler(async function (req, res, next) {
+  const userId = req.user?._id;
+
+  if (!userId) throw new APIError(401, "User not logged in");
+
+  const user = await User.findOne({ _id: userId });
+
+  if (!user)
+    throw new APIError(
+      404,
+      "User not found. Register before updating password."
+    );
+
+  const { oldPassword, newPassword, verifyNewPassword } = req.body;
+
+  const passCheck = await user?.isCorrectPassword(oldPassword);
+
+  if (!passCheck) throw new APIError(401, "Old and new passwords do not match");
+
+  if (
+    [newPassword, verifyNewPassword].some(
+      (pass) => pass == "" || pass == undefined
+    )
+  )
+    throw new APIError(404, "Must enter new password and verify password");
+
+  if (newPassword !== verifyNewPassword)
+    throw new APIError(
+      "New password fields do not match. Make sure both fields are same"
+    );
+
+  // user.password = password;
+
+  await User.updateOne({ _id: userId }, { $set: { password: newPassword } });
+
+  res
+    .status(200)
+    .json(
+      new APIResponse(
+        200,
+        { user: user.username, action: "Update Password" },
+        "Password changed successfully"
+      )
+    );
+});
+
+const updateUsername = asyncHandler(async function (req, res, next) {
+  const userId = req.user?._id;
+
+  if (!userId) throw new APIError(401, "User not logged in");
+
+  const user = await User.findOne({ _id: userId });
+
+  if (!user)
+    throw new APIError(
+      404,
+      "User not found. Register before updating username."
+    );
+
+  const { newUsername } = req.body;
+
+  if (!newUsername) throw new APIError(404, "Please enter a new username.");
+
+  const doesExist = await User.findOne({
+    username: newUsername?.trim()?.toLowerCase(),
+  });
+
+  if (doesExist) throw new APIError(401, "Username already taken");
+
+  user.username = newUsername?.toLowerCase()?.trim();
+
+  await user.save({ validateBeforeSave: false });
+
+  res
+    .status(200)
+    .json(
+      new APIResponse(
+        200,
+        { user: user.username, action: "Update Username" },
+        "Username changed successfully"
+      )
+    );
+});
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  regenerateExpiredAccessToken,
+  updatePassword,
+  updateUsername,
+};
