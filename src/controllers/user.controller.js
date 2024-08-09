@@ -332,6 +332,44 @@ const updateCoverImage = asyncHandler(async function (req, res, next) {
     .json(new APIResponse(200, user, "Cover Image update successful"));
 });
 
+const updateUserDetails = asyncHandler(async function (req, res, next) {
+  if (!req.user?._id) throw new APIError(401, "User not logged in");
+
+  const { firstName, lastName, expertise, bio } = req.body;
+
+  if (!firstName)
+    throw new APIError("First Name cannot be empty while updating user");
+
+  if (expertise instanceof Array && expertise.length > 0) {
+    const checkInvalidExpertise = expertise.some(
+      (obj) =>
+        isNaN(Date.parse(obj.to)) ||
+        isNaN(
+          Date.parse(obj.from) ||
+            obj.name == "" ||
+            Date.parse(obj.from) > Date.parse(obj.to)
+        )
+    );
+    if (checkInvalidExpertise)
+      throw new APIError(
+        400,
+        "Expertise fields must be an array with valid to and from dates"
+      );
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: { firstName, lastName: lastName || "", bio: bio || "" },
+      $push: { expertise: { ...expertise } },
+    },
+    { new: true }
+  ).select("-password -_refreshToken -status -userType");
+
+  res
+    .status(200)
+    .json(new APIResponse(200, { user }, "Fields updated succesfully"));
+});
 export {
   registerUser,
   loginUser,
@@ -341,4 +379,5 @@ export {
   updateUsername,
   updateCoverImage,
   updateAvatar,
+  updateUserDetails,
 };
