@@ -33,7 +33,7 @@ const projectSchema = new mongoose.Schema(
     milestones: [{ type: String }],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      //   required: true,
+      required: true,
       ref: "User",
     },
   },
