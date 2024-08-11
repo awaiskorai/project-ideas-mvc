@@ -2,8 +2,10 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { Project } from "../models/project.model.js";
 import { APIError } from "../utils/APIError.js";
 import { APIResponse } from "../utils/APIResponse.js";
+import { projectValidation } from "../utils/ValidationChecks.js";
 const createProject = asyncHandler(async function (req, res, next) {
   if (!req.user?._id) throw new APIError(`User must be logged in`);
+  projectValidation(req.body);
   const {
     title,
     description,
@@ -20,36 +22,6 @@ const createProject = asyncHandler(async function (req, res, next) {
     database,
     milestones,
   } = req.body;
-
-  if (
-    [title, description, scope].some((obj) => {
-      return obj == "" || obj == undefined;
-    })
-  )
-    throw new APIError(400, "Mandatory fields cannot be left empty");
-
-  if (
-    [
-      problemDomain,
-      industry,
-      targetAudience,
-      technologies,
-      skillsNeeded,
-      goals,
-    ].some((obj) => {
-      return (
-        !obj?.length || obj == "" || obj == undefined || !(obj instanceof Array)
-      );
-    })
-  )
-    throw new APIError(400, "Expected array with stringified elements");
-
-  if (
-    [duration, budgetEstimate].some((obj) => {
-      return !(typeof obj === "number");
-    })
-  )
-    throw new APIError(400, "Duration and budget estimate must be numbers");
 
   const project = await Project.create({
     title,
@@ -84,6 +56,101 @@ const getProject = asyncHandler(async function (req, res, next) {
 
   res
     .status(200)
-    .json(new APIResponse(200, project, "Project created succesfully"));
+    .json(new APIResponse(200, project, "Project fetched succesfully"));
 });
-export { createProject, getProject };
+
+const updateProject = asyncHandler(async function (req, res, next) {
+  if (!req?.user._id)
+    throw new APIError(401, "Unauthorized access to update project");
+  const { id } = req.params;
+  if (!id) throw new APIError(400, "Could not get project id");
+
+  const proj = Project.findOne({ createdBy: req.user._id, _id: id });
+  if (!proj)
+    throw new APIError(
+      `Could not find the project created by the User: ${req.user?.username}`
+    );
+
+  projectValidation(req.body);
+  const {
+    title,
+    description,
+    problemDomain,
+    industry,
+    duration,
+    targetAudience,
+    technologies,
+    skillsNeeded,
+    goals,
+    budgetEstimate,
+    scope,
+    techLanguage,
+    database,
+    milestones,
+  } = req.body;
+
+  const updatedProject = await Project.findByIdAndUpdate(
+    { _id: id, createdBy: req.user._id },
+    {
+      $set: {
+        title,
+        description,
+        problemDomain,
+        industry,
+        duration,
+        targetAudience,
+        technologies,
+        skillsNeeded,
+        goals,
+        budgetEstimate,
+        scope,
+        techLanguage,
+        database,
+        milestones,
+      },
+    },
+    { new: true }
+  );
+
+  if (!updateProject)
+    throw new APIError(500, "Could not update project try again.");
+  res
+    .status(200)
+    .json(
+      new APIResponse(
+        200,
+        { project: updatedProject },
+        "Updated project succesfully"
+      )
+    );
+});
+
+const deleteProject = asyncHandler(async function (req, res, next) {
+  if (!req.user?._id)
+    throw new APIError(401, "User not logged in. Unuathorized");
+  const id = req.params?.id;
+
+  if (!id) throw new APIError(400, "Project id not sent");
+
+  const confirmDelete = req.body.confirmDelete;
+
+  if (confirmDelete !== true)
+    throw new APIError(401, "Deleting with confirmation flag. Unauthorized");
+
+  const proj = await Project.findByIdAndDelete({ _id: id, createdBy: id });
+
+  console.log(proj);
+
+  if (!proj) throw new APIError(500, "Could not delete the project");
+
+  res
+    .status(200)
+    .json(
+      new APIResponse(
+        200,
+        { projectDeleted: proj },
+        "Succesfully deleted project"
+      )
+    );
+});
+export { createProject, getProject, updateProject, deleteProject };
