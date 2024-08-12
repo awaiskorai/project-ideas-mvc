@@ -198,7 +198,7 @@ const regenerateExpiredAccessToken = asyncHandler(
           )
         );
     } catch (error) {
-      throw new APIError(500, `Something went wrong ${e}`);
+      throw new APIError(500, `Something went wrong ${error}`);
     }
   }
 );
