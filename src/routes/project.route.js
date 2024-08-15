@@ -4,9 +4,10 @@ import {
   createProject,
   deleteProject,
   getProject,
+  getProjectsAggregatePaginate,
   updateProject,
 } from "../controllers/project.controller.js";
-import { checkProjectValidation } from "../middleware/projectValidator.middleware.js";
+// import { checkProjectValidation } from "../middleware/projectValidator.middleware.js";
 
 const projectRouter = new Router();
 projectRouter.use(jwtVerify);
@@ -16,5 +17,7 @@ projectRouter
   .get(getProject)
   .patch(updateProject)
   .delete(deleteProject);
+
+projectRouter.route("/").get(getProjectsAggregatePaginate);
 
 export { projectRouter };

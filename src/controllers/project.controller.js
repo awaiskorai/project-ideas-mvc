@@ -3,6 +3,7 @@ import { Project } from "../models/project.model.js";
 import { APIError } from "../utils/APIError.js";
 import { APIResponse } from "../utils/APIResponse.js";
 import { projectValidation } from "../utils/ValidationChecks.js";
+
 const createProject = asyncHandler(async function (req, res, next) {
   if (!req.user?._id) throw new APIError(`User must be logged in`);
   projectValidation(req.body);
@@ -153,4 +154,58 @@ const deleteProject = asyncHandler(async function (req, res, next) {
       )
     );
 });
-export { createProject, getProject, updateProject, deleteProject };
+
+const getProjectsAggregatePaginate = asyncHandler(
+  async function (req, res, next) {
+    console.log(req.query);
+    const page = Number(req.query?.page);
+    const limit = Number(req.query?.limit);
+
+    console.log(page, limit);
+    if (
+      [limit, page].some(
+        (obj) =>
+          obj == "" || obj == undefined || typeof obj != "number" || isNaN(obj)
+      )
+    )
+      throw new APIError(
+        400,
+        "Page and Limit query cannot be empty or non-number"
+      );
+
+    let projects = await Project.aggregate([
+      {
+        $facet: {
+          metaData: [
+            { $count: "totalDocuments" },
+            {
+              $addFields: {
+                pages: { $ceil: { $divide: ["$totalDocuments", limit] } },
+                limit,
+                page,
+              },
+            },
+          ],
+          pageResults: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+        },
+      },
+    ]);
+    projects = projects?.[0];
+    projects.metaData = {
+      ...projects?.metaData?.[0],
+      count: projects?.pageResults?.length,
+    };
+
+    res
+      .status(200)
+      .json(new APIResponse(200, projects, "Projects fetched Succesfully"));
+  }
+);
+
+export {
+  createProject,
+  getProject,
+  updateProject,
+  deleteProject,
+  getProjectsAggregatePaginate,
+};
