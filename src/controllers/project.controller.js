@@ -135,7 +135,7 @@ const deleteProject = asyncHandler(async function (req, res, next) {
 
   const confirmDelete = req.body.confirmDelete;
 
-  if (confirmDelete !== true)
+  if (confirmDelete != true)
     throw new APIError(401, "Deleting with confirmation flag. Unauthorized");
 
   const proj = await Project.findByIdAndDelete({ _id: id, createdBy: id });
