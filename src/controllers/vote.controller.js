@@ -1,8 +1,8 @@
-import mongoose from "mongoose";
-import { Vote } from "../models/vote.model.js";
+// import { Vote } from "../models/vote.model.js";
 import { APIError } from "../utils/APIError.js";
 import { APIResponse } from "../utils/APIResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { toggleVote, getTotalVotes } from "../services/vote.service.js";
 
 const voteProject = asyncHandler(async function (req, res, next) {
   if (!req.user?._id)
@@ -13,29 +13,7 @@ const voteProject = asyncHandler(async function (req, res, next) {
 
   const { voteType } = req.body;
 
-  const vote = await Vote.updateOne(
-    { projectID, userID: req.user?._id },
-    [
-      {
-        $set: {
-          active: {
-            $cond: {
-              if: {
-                $and: [
-                  { $eq: ["$active", true] },
-                  { $eq: ["$voteType", voteType] },
-                ],
-              },
-              then: false,
-              else: true,
-            },
-          },
-          voteType,
-        },
-      },
-    ],
-    { upsert: true }
-  );
+  const vote = await toggleVote(projectID, voteType, req?.user?._id);
 
   res.status(200).json(new APIResponse(200, vote, "Vote Successfull"));
 });
@@ -46,30 +24,7 @@ const getProjectVotes = asyncHandler(async function (req, res, next) {
 
   if (!projectID) throw new APIError(400, "Project ID parameter missing");
 
-  const totalVoteAggregate = await Vote.aggregate([
-    {
-      $match: {
-        active: true,
-        projectID: new mongoose.Types.ObjectId(projectID),
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        upvotes: {
-          $sum: {
-            $cond: { if: { $eq: ["$voteType", "upvote"] }, then: 1, else: 0 },
-          },
-        },
-        downvotes: {
-          $sum: {
-            $cond: { if: { $eq: ["$voteType", "downvote"] }, then: 1, else: 0 },
-          },
-        },
-      },
-    },
-    { $project: { total: { $subtract: ["$upvotes", "$downvotes"] } } },
-  ]);
+  const totalVoteAggregate = await getTotalVotes(projectID);
 
   if (!totalVoteAggregate)
     throw new APIError(

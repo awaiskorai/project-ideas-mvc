@@ -1,4 +1,5 @@
 import { Comment } from "../models/comment.model.js";
+import { getCommentsOnProjectAggregatePaginateQuery } from "../services/comment.service.js";
 import { APIError } from "../utils/APIError.js";
 import { APIResponse } from "../utils/APIResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -11,20 +12,18 @@ const addComment = asyncHandler(async function (req, res, next) {
     throw new APIError(400, "Project ID missing from parameters");
 
   const { content } = req.body;
-  if (content?.length > 1000 || !comment?.length)
+  console.log(content);
+  if (content?.length > 1000 || !content?.length)
     throw new APIError(
       400,
       "Comment's content cannot be empty or longer than 1000 characters"
     );
 
-  const comment = await Comment.create(
-    {
-      content,
-      createdBy: req.user?._id,
-      projectID: commentProjectId,
-    },
-    { new: true }
-  );
+  const comment = await Comment.create({
+    content: content,
+    createdBy: req.user?._id,
+    projectID: commentProjectId,
+  });
 
   res
     .status(200)
@@ -141,29 +140,11 @@ const getCommentsOnProjectAggregatePaginate = asyncHandler(
         "Page and Limit query parameters cannot be empty, must be in numbers"
       );
 
-    let paginatedComments = Comment.aggregate([
-      {
-        $facet: {
-          metaData: [
-            { $count: "totalComments" },
-            {
-              $addFields: {
-                page,
-                limit,
-                $ceil: { $divide: ["$totalComments", limit] },
-              },
-            },
-          ],
-          pageResults: [{ $skip: (page - 1) * limit }, { $limit: limit }],
-        },
-      },
-    ]);
-
-    paginatedComments = paginatedComments[0];
-    paginatedComments.metaData = {
-      ...paginatedComments.metaData[0],
-      count: paginatedComments.pageResults.length,
-    };
+    let paginatedComments = await getCommentsOnProjectAggregatePaginateQuery(
+      projectId,
+      page,
+      limit
+    );
 
     res
       .status(200)
